@@ -1,46 +1,68 @@
-class Ball {
-  radius: number;
-  posX: number;
-  posY: number;
-  dirX: number;
-  dirY: number;
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
+class Point {
+   x: number;
+   y: number;
+   constructor(x: number, y: number) {
+     this.x = x;
+     this.y = y;
+   }
 
-  constructor(radius: number, posX: number, posY: number, dirX: number, dirY: number) {
-    this.radius = radius;
-    this.posX = posX;
-    this.posY = posY;
-    this.dirX = dirX;
-    this.dirY = dirY;
+   add(point: Point) {
+     this.x += point.x;
+     this.y += point.y
+   }
+}
+
+class Rect {
+  topLeft: Point;
+  bottomRight: Point;
+
+  constructor(left: number, top: number, right: number, bottom: number) {
+    this.topLeft = new Point(left, top);
+    this.bottomRight = new Point(right, bottom);
   }
 
-  move() {
-    if(this.posX + this.dirX <= this.minX) {
-      this.dirX *= -1;
-    }
-    if(this.posY + this.dirY <= this.minY) {
-      this.dirY *= -1;
-    }
-    if(this.posX + this.dirX + this.radius * 2 >= this.maxX) {
-      this.dirX *= -1;
-    }
-    if(this.posY + this.dirY+ this.radius * 2 >= this.maxY) {
-      this.dirY *= -1;
-    }
-    this.posX += this.dirX;
-    this.posY += this.dirY;
+  add(point: Point) {
+    this.topLeft.add(point);
+    this.bottomRight.add(point);
+  }
 
-    return [this.posX, this.posY];
+}
+
+class Ball extends Rect {
+  radius: number;
+  pos: Point;
+  dir: Point;
+  min: Point;
+  max: Point;
+
+  constructor(radius: number, posX: number, posY: number, dirX: number, dirY: number) {
+    super(posX, posY, posX + 2 * radius, posY + 2 * radius);
+    this.radius = radius;
+    this.pos = new Point(posX, posY);
+    this.dir = new Point(dirX, dirY);
+  }
+
+  move(): Point {
+    if(this.pos.x + this.dir.x <= this.min.x) {
+      this.dir.x *= -1;
+    }
+    if(this.pos.y + this.dir.y <= this.min.y) {
+      this.dir.y *= -1;
+    }
+    if(this.pos.x + this.dir.x + this.radius * 2 >= this.max.x) {
+      this.dir.x *= -1;
+    }
+    if(this.pos.y + this.dir.y+ this.radius * 2 >= this.max.y) {
+      this.dir.y *= -1;
+    }
+    this.pos.add(this.dir);
+
+    return this.pos;
   }
 
   setConstraints(minX: number, minY: number, maxX: number, maxY: number) {
-    this.minX = minX;
-    this.minY = minY;
-    this.maxX = maxX;
-    this.maxY = maxY;
+    this.min = new Point(minX, minY);
+    this.max = new Point(maxX, maxY);
   }
 
 }
@@ -52,7 +74,7 @@ var ball = new Ball(parseInt(getComputedStyle(ballElement)['border-top-left-radi
 ball.setConstraints(0,0, boardElement.offsetWidth, boardElement.offsetHeight);
 
 setInterval(() => {
-  let [posX, posY] = ball.move();
+  let {x: posX, y: posY} = ball.move();
 
   ballElement.style.left = posX + 'px';
   ballElement.style.top = posY + 'px';

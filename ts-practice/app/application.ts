@@ -12,13 +12,25 @@ class Point {
    }
 }
 
-class Rect {
-  topLeft: Point;
-  bottomRight: Point;
+enum Side {
+  None,
+  Left,
+  Top,
+  Right, 
+  Bottom
+}
 
-  constructor(left: number, top: number, right: number, bottom: number) {
+class Rect {
+  topLeft : Point;
+  bottomRight : Point;
+
+  constructor(left : number, top: number, right: number, bottom: number) {
     this.topLeft = new Point(left, top);
     this.bottomRight = new Point(right, bottom);
+  }
+
+  clone() : Rect {
+    return new Rect(this.topLeft.x, this.topLeft.y, this.bottomRight.x, this.bottomRight.y);
   }
 
   add(point: Point) {
@@ -26,57 +38,365 @@ class Rect {
     this.bottomRight.add(point);
   }
 
+  moveTo(rect: Rect) {
+    this.topLeft.x = rect.topLeft.x;
+    this.topLeft.y = rect.topLeft.y;
+    this.bottomRight.x = rect.bottomRight.x;
+    this.bottomRight.y = rect.bottomRight.y;
+  }
+
+  moveCenterXTo(centerX : number) {
+    var left = centerX - this.width() / 2;
+    var right = left + this.width();
+    this.topLeft.x = left;
+    this.bottomRight.x = right;
+  }
+
+  moveBottomTo(bottom: number) {
+    this.topLeft.y = bottom - this.height();
+    this.bottomRight.y = bottom; 
+  }
+
+  width() {
+    return this.bottomRight.x - this.topLeft.x;
+  }
+
+  height() {
+    return this.bottomRight.y - this.topLeft.y;
+  }
+
+  centerX() {
+    return (this.topLeft.x + this.bottomRight.x) / 2;
+  }
+
+  centerY() {
+    return (this.topLeft.y + this.bottomRight.y) / 2;
+  }
+
+  moveLeft(step: number) {
+    this.topLeft.x -= step;
+    this.bottomRight.x -= step;
+  }
+
+  moveRight(step: number) {
+    this.topLeft.x += step;
+    this.bottomRight.x += step;
+  }
+
 }
 
-class Ball extends Rect {
-  radius: number;
-  pos: Point;
-  dir: Point;
-  min: Point;
-  max: Point;
+class Obstacle extends Rect {
+  checkCollision(anotherRect : Rect) : Side {
+    var w = 0.5 * (this.width() + anotherRect.width());
+    var h = 0.5 * (this.height() + anotherRect.height());
+    var dx = this.centerX() - anotherRect.centerX();
+    var dy = this.centerY() - anotherRect.centerY();
 
-  constructor(radius: number, posX: number, posY: number, dirX: number, dirY: number) {
-    super(posX, posY, posX + 2 * radius, posY + 2 * radius);
+    if (Math.abs(dx) <= w && Math.abs(dy) <= h) {
+        var wy = w * dy;
+        var hx = h * dx;
+        if (wy > hx) {
+            return wy > -hx ? Side.Top : Side.Left;
+        } else {
+            return wy > -hx ? Side.Right : Side.Bottom;
+        }
+    } else {
+        return Side.None;
+    }
+  }
+}
+
+class Vector extends Point {
+  flipX() {
+    this.x *= -1;
+  }
+
+  flipY() {
+    this.y *= -1;
+  }
+}
+
+class Sprite extends Obstacle {
+  sprite: HTMLElement;
+  isVisible: Boolean;
+
+  constructor(sprite: HTMLElement, left? : number, top?: number, right?: number, bottom?: number) {
+      bottom = bottom || sprite.offsetTop + sprite.offsetHeight;
+      right = right || sprite.offsetLeft + sprite.offsetWidth;
+      top = top || sprite.offsetTop;
+      left = left || sprite.offsetLeft;
+
+      super(left, top, right, bottom);
+      this.sprite = sprite;
+      this.isVisible = true;
+  }
+
+  moveTo(rect : Rect) {
+    super.moveTo(rect);
+
+    let {x: posX, y: posY} = this.topLeft;
+
+    this.sprite.style.left = posX + 'px';
+    this.sprite.style.top = posY + 'px';         
+  }
+
+  hide() {
+    this.sprite.style.display = 'none';
+    this.isVisible = false;
+  }    
+
+  show() {
+    this.sprite.style.display = 'block';
+    this.isVisible = true;
+  }    
+
+  checkCollision(anotherRect : Rect) : Side {
+    if (!this.isVisible) {
+        return Side.None;
+    }
+    return super.checkCollision(anotherRect);
+  }
+}
+
+
+class Brick extends Sprite {
+
+}
+
+class Paddle extends Sprite {
+  constructor(sprite: HTMLElement, public maxRight : number) {
+      super(sprite);
+  }
+
+  moveLeft(step?: number) {
+      var newPosition = this.clone();
+      newPosition.moveLeft(step);
+
+      if (newPosition.topLeft.x >= 0) {
+          this.moveTo(newPosition);
+      }
+  }
+
+  moveRight(step? : number) {
+      var newPosition = this.clone();
+      newPosition.moveRight(step);
+
+      if (newPosition.bottomRight.x <= this.maxRight) {
+          this.moveTo(newPosition);
+      }
+  }
+
+  calculateHitAngle(ballX : number, ballRadius : number) : number {
+      var hitSpot = ballX - this.topLeft.x;
+      var maxPaddle = this.width() + ballRadius;
+      var minPaddle = -ballRadius;
+      var paddleRange = maxPaddle - minPaddle;
+
+      var minAngle = 160;
+      var maxAngle = 20;
+      var angleRange = maxAngle - minAngle;
+
+      return ((hitSpot * angleRange) / paddleRange) + minAngle;
+  }
+}
+
+class Ball extends Sprite {
+  radius : number;
+  dir  : Vector;
+  velocity: number;
+
+  wallLeft : Obstacle;
+  wallTop: Obstacle;
+  wallRight: Obstacle;
+  wallBottom: Obstacle;
+
+  constructor(sprite: HTMLElement, dir : Vector) {
+    var radius = parseInt(getComputedStyle(sprite)['border-top-left-radius']);
+    super(sprite, sprite.offsetLeft, sprite.offsetTop, sprite.offsetLeft + 2 * radius, sprite.offsetTop + 2 * radius);
+    this.sprite = sprite;
     this.radius = radius;
-    this.pos = new Point(posX, posY);
-    this.dir = new Point(dirX, dirY);
+    this.velocity = 5;        
+    this.dir = dir;        
   }
 
-  move(): Point {
-    if(this.pos.x + this.dir.x <= this.min.x) {
-      this.dir.x *= -1;
-    }
-    if(this.pos.y + this.dir.y <= this.min.y) {
-      this.dir.y *= -1;
-    }
-    if(this.pos.x + this.dir.x + this.radius * 2 >= this.max.x) {
-      this.dir.x *= -1;
-    }
-    if(this.pos.y + this.dir.y+ this.radius * 2 >= this.max.y) {
-      this.dir.y *= -1;
-    }
-    this.pos.add(this.dir);
-
-    return this.pos;
+  calculateNewPosition() : Rect {
+      var newPosition = this.clone();
+      newPosition.add(this.dir);
+      return newPosition;        
   }
 
-  setConstraints(minX: number, minY: number, maxX: number, maxY: number) {
-    this.min = new Point(minX, minY);
-    this.max = new Point(maxX, maxY);
+  bounceHorizontal() {
+      this.dir.flipY();
+  }
+
+  bounceVertical() {
+      this.dir.flipX();
+  } 
+
+  bounceWithAngle(angle: number) {
+      angle = angle * (Math.PI / 180);
+      this.dir.x = Math.cos(angle) * this.velocity;
+      this.dir.y = -Math.sin(angle) * this.velocity;
   }
 
 }
 
-var ballElement : HTMLElement = <HTMLElement>document.querySelectorAll('.ball')[0];
-var boardElement : HTMLElement = <HTMLElement>document.querySelectorAll('.game-board')[0];
+enum GameState {
+  Running,
+  GameOver
+}
 
-var ball = new Ball(parseInt(getComputedStyle(ballElement)['border-top-left-radius']), ballElement.offsetLeft, ballElement.offsetTop, 1, -1);
-ball.setConstraints(0,0, boardElement.offsetWidth, boardElement.offsetHeight);
+enum KeyCodes {
+  LEFT = 37,
+  RIGHT = 39
+}
 
-setInterval(() => {
-  let {x: posX, y: posY} = ball.move();
+class Game {
+  loopInterval: number = 10;
+  gameState: GameState;
+  ball: Ball;
+  paddle: Paddle;
+  bricks: Array<Brick> = [];
 
-  ballElement.style.left = posX + 'px';
-  ballElement.style.top = posY + 'px';
+  keyMap = {};
 
-}, 15);
+  wallLeft : Obstacle;
+  wallTop: Obstacle;
+  wallRight: Obstacle;
+  wallBottom: Obstacle;    
+
+  livesLeft : number;
+  score: number;
+
+  constructor(ballElement : HTMLElement, paddle: HTMLElement, bricks: HTMLCollection, boardElement : HTMLElement, public livesLabel : HTMLElement,
+      public scoreLabel: HTMLElement, public newGameBtn: HTMLElement) {
+      this.gameState = GameState.Running;
+      this.paddle = new Paddle(paddle, boardElement.offsetWidth);
+
+      this.ball = new Ball(
+          ballElement,            
+          new Vector(3, -3) 
+      );
+
+      for (let i = 0; i < bricks.length; i++) {
+          this.bricks.push(new Brick(<HTMLElement>bricks[i]));
+      }
+
+      this.createWalls(this.ball.radius, boardElement.offsetWidth, boardElement.offsetHeight);
+
+      this.newGame();
+
+      this.newGameBtn.addEventListener('click', () => this.newGame());
+  }    
+
+  createWalls(radius : number, maxX : number, maxY : number) {
+      this.wallLeft = new Obstacle(-radius, -radius, 0, maxY + radius);
+      this.wallTop = new Obstacle(-radius, -radius, maxX + radius, 0);
+      this.wallRight = new Obstacle(maxX, -radius, maxX + radius, maxY + radius);
+      this.wallBottom = new Obstacle(-radius, maxY, maxX + radius, maxY + radius);        
+  }
+
+  newGame() {
+      this.newGameBtn.style.display = 'none';
+      this.score = 0;
+      this.livesLeft = 3;
+      this.livesLabel.innerText = '' + this.livesLeft;
+      this.score = 0;
+      this.scoreLabel.innerText = '' + this.score;
+      this.ball.show();
+      this.ball.bounceWithAngle(60);
+      var ballPosition = this.ball.clone();
+      ballPosition.moveCenterXTo(this.paddle.centerX());
+      ballPosition.moveBottomTo(this.paddle.topLeft.y - 4);
+      this.ball.moveTo(ballPosition);
+      this.gameState = GameState.Running;
+  }
+
+  lostLive() {
+      if (--this.livesLeft) {
+          this.ball.bounceWithAngle(60);
+          var ballPosition = this.ball.clone();
+          ballPosition.moveCenterXTo(this.paddle.centerX());
+          ballPosition.moveBottomTo(this.paddle.topLeft.y - 4);
+          this.ball.moveTo(ballPosition);
+      } else {
+          this.gameState = GameState.GameOver;
+          this.ball.hide();          
+          this.newGameBtn.style.display = 'block';  
+      }
+      this.livesLabel.innerText = '' + this.livesLeft;
+  }
+
+  run() {
+      document.addEventListener('keyup', (e) => this.keyMap[e.keyCode] = false);
+      document.addEventListener('keydown', (e) => this.keyMap[e.keyCode] = true);
+
+     setInterval(() => {
+          if (this.gameState !== GameState.Running) {
+              return;
+          }
+          var newBallPosition = this.ball.calculateNewPosition();
+
+          if (this.keyMap[KeyCodes.LEFT]) {
+              this.paddle.moveLeft(5);
+          } else if (this.keyMap[KeyCodes.RIGHT]) {
+              this.paddle.moveRight(5);
+          }
+
+          if (this.wallBottom.checkCollision(newBallPosition)) {
+              this.lostLive();
+              return;
+          }
+
+          if (this.wallLeft.checkCollision(newBallPosition) || this.wallRight.checkCollision(newBallPosition)) {
+              this.ball.bounceVertical();
+          }
+          if (this.wallTop.checkCollision(newBallPosition)) {
+              this.ball.bounceHorizontal();
+          }     
+
+          for (let brick of this.bricks) {
+              let wasHit = false;
+
+              switch (brick.checkCollision(newBallPosition)) {
+                  case (Side.Left):
+                  case (Side.Right):
+                      this.ball.bounceVertical();
+                      wasHit = true;
+                      break;
+
+                  case (Side.Top):
+                  case (Side.Bottom):                    
+                      this.ball.bounceHorizontal();
+                      wasHit = true;
+              }
+
+              if (wasHit) {
+                  brick.hide();
+                  this.score += 20;
+                  this.scoreLabel.innerText = '' + this.score;
+                  break;
+              }
+          }
+
+          if (this.paddle.checkCollision(newBallPosition)) {
+              this.ball.bounceWithAngle(this.paddle.calculateHitAngle(this.ball.centerX(), this.ball.radius));
+          }
+
+          this.ball.moveTo(this.ball.calculateNewPosition());
+     }, this.loopInterval) 
+  }
+}
+
+
+var game = new Game(
+  <HTMLElement>document.getElementsByClassName("ball")[0],
+  <HTMLElement>document.getElementsByClassName("paddle")[0],
+  <HTMLCollection>document.getElementsByClassName("brick"),
+  <HTMLElement>document.getElementsByClassName("game-board")[0],
+  <HTMLElement>document.getElementById('lives'),
+  <HTMLElement>document.getElementById('score'),
+  <HTMLElement>document.getElementById('newGame')    
+);
+
+game.run();
